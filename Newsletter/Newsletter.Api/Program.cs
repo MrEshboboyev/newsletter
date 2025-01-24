@@ -3,6 +3,7 @@ using MassTransit.MultiBus;
 using Microsoft.EntityFrameworkCore;
 using Newsletter.Api.Database;
 using Newsletter.Api.Emails;
+using Newsletter.Api.Sagas;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -27,6 +28,14 @@ builder.Services.AddMassTransit(busConfigurator =>
 
     busConfigurator.AddConsumers(typeof(Program).Assembly);
 
+    busConfigurator.AddSagaStateMachine<NewsletterOnboardingSaga, NewsletterOnboardingSagaData>()
+        .EntityFrameworkRepository(r =>
+        {
+            r.ExistingDbContext<AppDbContext>();
+            
+            r.UsePostgres();
+        });
+
     busConfigurator.UsingRabbitMq((context, cfg) =>
     {
         cfg.Host(new Uri(builder.Configuration.GetConnectionString("RabbitMQ")!), hst =>
@@ -34,6 +43,8 @@ builder.Services.AddMassTransit(busConfigurator =>
             hst.Username("guest");
             hst.Password("guest");
         });
+        
+        cfg.UseInMemoryOutbox(context);
         
         cfg.ConfigureEndpoints(context);
     });
