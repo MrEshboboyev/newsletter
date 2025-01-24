@@ -4,11 +4,11 @@ public class EmailService : IEmailService
 {
     public Task SendWelcomeEmailAsync(string email)
     {
-        throw new NotImplementedException();
+        return Task.CompletedTask;
     }
 
     public Task SendFollowUpEmail(string email)
     {
-        throw new NotImplementedException();
+        return Task.CompletedTask;
     }
 }
