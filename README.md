@@ -1,61 +1,85 @@
-# ✉️ Newsletter System with MassTransit and Saga  
+# ✉️ Advanced Newsletter System with MassTransit, Saga, and RabbitMQ
 
-This repository demonstrates a **Newsletter System** built with **MassTransit**, **Saga**, and **RabbitMQ**. The application features email workflows such as sending **welcome emails** and **follow-up emails** using event-driven design principles.  
+This repository demonstrates a sophisticated **Newsletter System** built with **MassTransit**, **Saga Pattern**, and **RabbitMQ**, showcasing the true potential of event-driven architecture. The application features complex email workflows such as sending **welcome emails** and **follow-up emails** using advanced event-driven design principles.
 
-It also integrates **EF Core** and **PostgreSQL** for persistence, making it a robust solution for managing messaging workflows in a scalable and maintainable manner.  
+It also integrates **EF Core** and **PostgreSQL** for persistence, making it a robust solution for managing complex messaging workflows in a scalable and maintainable manner.
 
-## 🌟 Features  
+## 📚 Documentation
 
-### Core Concepts  
-- **MassTransit**: A lightweight message broker library for .NET.  
-- **Saga**: Orchestrates long-running workflows, ensuring consistency in distributed systems.  
-- **RabbitMQ**: Handles message queuing and delivery.  
+- [Architecture Overview](docs/architecture.md) - Detailed system architecture and message flow diagrams
 
-### Practical Examples  
-- **SendWelcomeEmail**: Automatically sends a welcome email when a user subscribes.  
-- **FollowUpEmail**: Sends follow-up emails to engage with subscribers.  
+## 🌟 Features
 
-### Tools and Libraries  
-- **EF Core**: Handles data persistence for Saga states and other entities.  
-- **PostgreSQL**: A powerful relational database for storage.  
+### Core Event-Driven Architecture Concepts
+- **MassTransit**: Advanced message broker library for .NET with support for Sagas and complex workflows
+- **Saga Pattern**: Orchestrates long-running distributed workflows, ensuring consistency in distributed systems
+- **RabbitMQ**: Robust message queuing and delivery system for asynchronous communication
+- **NSwag**: API documentation and testing with Swagger integration
 
-## 📂 Repository Structure  
+### Advanced Workflow Examples
+- **Welcome Email Workflow**: Automatically sends a welcome email when a user subscribes
+- **Follow-Up Email Workflow**: Sends follow-up emails to engage with subscribers based on time delays
+- **Saga State Management**: Tracks complex multi-step processes with state persistence
+- **Event Sourcing**: Full event history for audit and replay capabilities
+
+### Tools and Libraries
+- **EF Core**: Handles data persistence for Saga states and other entities
+- **PostgreSQL**: A powerful relational database for storage
+- **NSwag**: API documentation generation and client SDK generation
+- **Docker**: Containerized deployment for easy setup and scaling
+
+## 📂 Repository Structure
 
 ```
-📦 Newsletter.Api  
- ┣ 📂 Newsletter.Api            # Core business logic  
-```  
+📦 Newsletter.Api
+ ┣ 📂 Controllers              # API Controllers with Swagger documentation
+ ┣ 📂 Database                 # EF Core DbContext and entity models
+ ┣ 📂 Emails                   # Email service implementations
+ ┣ 📂 Handlers                 # MassTransit message consumers
+ ┣ 📂 Messages                 # Commands and Events definitions
+ ┣ 📂 Migrations               # EF Core database migrations
+ ┣ 📂 Sagas                   # Saga state machines and data models
+ ┣ 📜 Program.cs              # Application entry point and DI configuration
+ ┣ 📜 appsettings.json        # Configuration settings
+ ┗ 📜 Newsletter.Api.csproj   # Project dependencies
+```
 
-## 🛠 Getting Started  
+## 🛠 Getting Started
 
-### Prerequisites  
-Ensure you have the following installed:  
-- .NET Core SDK  
-- RabbitMQ (running locally or in the cloud)  
-- PostgreSQL database  
+### Prerequisites
+Ensure you have the following installed:
+- .NET 9.0 SDK
+- Docker and Docker Compose (recommended for easy setup)
+- Visual Studio 2022 or VS Code
 
-### Step 1: Clone the Repository  
-```bash  
-git clone https://github.com/MrEshboboyev/newsletter.git  
-cd newsletter  
-```  
+### Quick Start with Docker (Recommended)
+```bash
+# Clone the repository
+git clone https://github.com/MrEshboboyev/newsletter.git
+cd newsletter
 
-### Step 2: Setup the Environment  
-1. Start RabbitMQ and ensure it’s accessible.  
-2. Create a PostgreSQL database and update the connection string in `appsettings.json`.  
+# Start all services with Docker Compose
+docker-compose up -d
 
-### Step 3: Run the Application  
-```bash  
-dotnet run --project Newsletter.Api
-```  
+# The application will be available at:
+# API: http://localhost:8080
+# Swagger UI: http://localhost:8080/swagger
+# RabbitMQ Management: http://localhost:15672 (guest/guest)
+# PostgreSQL: localhost:5432 (postgres/postgres)
+```
 
-### Step 4: Explore the Workflows  
-Trigger the workflows (e.g., subscribing a user) to see the Saga in action.  
+### Manual Setup
+1. Start RabbitMQ and PostgreSQL services
+2. Update connection strings in `appsettings.json` if needed
+3. Run the application:
+```bash
+dotnet run --project src/Newsletter.Api
+```
 
-## 📖 Code Highlights  
+## 📖 Code Highlights
 
-### Saga State Machine Example  
-```csharp  
+### Advanced Saga State Machine
+```csharp
 public class NewsletterOnboardingSaga : MassTransitStateMachine<NewsletterOnboardingSagaData>
 {
     public State Welcoming { get; set; }
@@ -105,11 +129,11 @@ public class NewsletterOnboardingSaga : MassTransitStateMachine<NewsletterOnboar
                 })
                 .Finalize());
     }
-} 
-```  
+}
+```
 
-### RabbitMQ Integration Example  
-```csharp  
+### RabbitMQ Integration with MassTransit
+```csharp
 builder.Services.AddMassTransit(busConfigurator =>
 {
     busConfigurator.SetKebabCaseEndpointNameFormatter();
@@ -137,50 +161,125 @@ builder.Services.AddMassTransit(busConfigurator =>
         cfg.ConfigureEndpoints(context);
     });
 });
-```  
+```
 
-### Sending a Welcome Email Example  
-```csharp  
-public class SendWelcomeEmailHandler(IEmailService emailService) : IConsumer<SendWelcomeEmail>
+### NSwag API Documentation Configuration
+```csharp
+builder.Services.AddSwaggerDocument(config =>
+    config.PostProcess = (settings =>
+            {
+                settings.Info.Title = "Newsletter API";
+                settings.Info.Version = "v1";
+                settings.Info.Description = "An event-driven newsletter system built with MassTransit, Saga, and RabbitMQ.";
+            }
+        ));
+```
+
+### API Controller with Swagger Annotations
+```csharp
+[ApiController]
+[Route("api/[controller]")]
+[Produces("application/json")]
+public class NewsletterController : ControllerBase
 {
-    public async Task Consume(ConsumeContext<SendWelcomeEmail> context)
+    private readonly IBus _bus;
+
+    public NewsletterController(IBus bus)
     {
-        await emailService.SendWelcomeEmailAsync(context.Message.Email);
-        
-        await context.Publish(new WelcomeEmailSent
+        _bus = bus;
+    }
+
+    /// <summary>
+    /// Subscribe to the newsletter
+    /// </summary>
+    /// <param name="email">The email address to subscribe</param>
+    /// <returns>Accepted result</returns>
+    [HttpPost("subscribe")]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> Subscribe([FromBody] string email)
+    {
+        if (string.IsNullOrWhiteSpace(email))
         {
-            SubscriberId = context.Message.SubscriberId,
-            Email = context.Message.Email
-        });
+            return BadRequest("Email is required");
+        }
+
+        await _bus.Publish(new SubscribeToNewsLetter(email));
+        return Accepted();
     }
 }
-```  
+```
 
-## 🌐 Use Cases  
+## 🌐 Use Cases
 
-### 1. Welcome Email Workflow  
-- Triggered when a user subscribes to the newsletter.  
-- Ensures the user receives a welcome email.  
+### 1. Welcome Email Workflow
+- Triggered when a user subscribes to the newsletter
+- Ensures the user receives a personalized welcome email
+- Tracks state transitions using Saga pattern
 
-### 2. Follow-Up Email Workflow  
-- Automates sending follow-up emails to keep users engaged.  
-- Tracks state transitions using Saga.
+### 2. Follow-Up Email Workflow
+- Automates sending follow-up emails to keep users engaged
+- Implements time-based delays between messages
+- Tracks state transitions using Saga
 
+### 3. Complex Multi-Step Onboarding
+- Orchestrates the complete onboarding process
+- Maintains state across service boundaries
+- Provides audit trail of all events
 
-## 🌟 Why This Project?  
-1. **Event-Driven Architecture**: Learn how to build scalable and maintainable workflows.  
-2. **MassTransit and Saga**: Explore advanced concepts in messaging and state management.  
-3. **Real-World Examples**: Focused use cases like newsletter management make the project relatable and practical.  
+## 🎯 Advanced Event-Driven Architecture Benefits
 
-## 🏗 About the Author  
-This project was developed by [MrEshboboyev](https://github.com/MrEshboboyev), a software developer passionate about event-driven systems, clean code, and distributed architectures.  
+### Scalability
+- Asynchronous message processing allows for horizontal scaling
+- Independent service scaling based on workload
+- Load balancing through RabbitMQ
 
-## 📄 License  
-This project is licensed under the MIT License. Feel free to use and adapt the code for your own projects.  
+### Resilience
+- Message persistence in RabbitMQ ensures no data loss
+- Retry mechanisms for failed message processing
+- Saga pattern maintains consistency across failures
 
-## 🔖 Tags  
-C#, .NET, MassTransit, Saga, RabbitMQ, EF Core, PostgreSQL, Event-Driven Architecture, Messaging, Newsletter System, Clean Code  
+### Maintainability
+- Loose coupling between services
+- Clear separation of concerns
+- Easy to add new workflow steps
 
----  
+### Observability
+- Full event history for debugging and auditing
+- RabbitMQ management interface for monitoring
+- Structured logging for tracing
 
-Feel free to suggest additional features or raise issues! 🚀  
+## 🚀 API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/newsletter/subscribe` | POST | Subscribe an email to the newsletter |
+| `/api/newsletter/health` | GET | Health check endpoint |
+| `/swagger` | GET | API documentation (Swagger UI) |
+
+## 📊 System Architecture
+
+```mermaid
+graph TB
+    A[Client] --> B[API Gateway]
+    B --> C[Newsletter API]
+    C --> D[RabbitMQ]
+    D --> E[Welcome Email Handler]
+    D --> F[Follow-up Email Handler]
+    E --> G[Email Service]
+    F --> G
+    C --> H[PostgreSQL]
+    H --> I[Saga State]
+    H --> J[Subscriber Data]
+```
+
+## 🏗 About the Author
+This project was developed by [MrEshboboyev](https://github.com/MrEshboboyev), a software developer passionate about event-driven systems, clean code, and distributed architectures.
+
+## 📄 License
+This project is licensed under the MIT License. Feel free to use and adapt the code for your own projects.
+
+## 🔖 Tags
+C#, .NET, MassTransit, Saga, RabbitMQ, EF Core, PostgreSQL, Event-Driven Architecture, Messaging, Newsletter System, Clean Code, NSwag, Swagger, Docker
+
+---
