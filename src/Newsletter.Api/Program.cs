@@ -2,7 +2,11 @@ using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Newsletter.Api.Database;
 using Newsletter.Api.Emails;
+using Newsletter.Api.Middleware;
 using Newsletter.Api.Sagas;
+using Newsletter.Api.Services;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,12 +26,21 @@ builder.Services.AddSwaggerDocument(config =>
 
 builder.Services.AddDbContext<AppDbContext>(options =>
 {
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"));
+    // Use in-memory database for testing, PostgreSQL for production
+    if (builder.Environment.IsDevelopment())
+    {
+        options.UseInMemoryDatabase("NewsletterDb");
+    }
+    else
+    {
+        options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"));
+    }
 });
 
 #endregion
 
 builder.Services.AddTransient<IEmailService, EmailService>();
+builder.Services.AddSingleton<IMetricsService, MetricsService>();
 
 #region MassTransit
 
@@ -44,6 +57,14 @@ builder.Services.AddMassTransit(busConfigurator =>
             
             r.UsePostgres();
         });
+        
+    busConfigurator.AddSagaStateMachine<AdvancedNewsletterOnboardingSaga, AdvancedNewsletterOnboardingSagaData>()
+        .EntityFrameworkRepository(r =>
+        {
+            r.ExistingDbContext<AppDbContext>();
+            
+            r.UsePostgres();
+        });
 
     busConfigurator.UsingRabbitMq((context, cfg) =>
     {
@@ -51,6 +72,13 @@ builder.Services.AddMassTransit(busConfigurator =>
         {
             hst.Username("guest");
             hst.Password("guest");
+        });
+        
+        // Configure retry policy for message consumption
+        cfg.UseMessageRetry(r => 
+        {
+            r.Immediate(3); // Retry 3 times immediately
+            r.Interval(3, TimeSpan.FromSeconds(5)); // Then retry 3 times with 5 second intervals
         });
         
         cfg.UseInMemoryOutbox(context);
@@ -61,6 +89,22 @@ builder.Services.AddMassTransit(busConfigurator =>
 
 #endregion
 
+// Add distributed tracing
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(resource => resource.AddService("Newsletter.Api"))
+    .WithTracing(tracerProviderBuilder =>
+    {
+        tracerProviderBuilder
+            .AddSource("MassTransit")
+            .AddSource("Newsletter.Api")
+            .AddSource("Newsletter.Api.Handlers")
+            .AddSource("Newsletter.Api.Sagas")
+            .AddSource("Newsletter.Api.Sagas.Advanced")
+            .AddAspNetCoreInstrumentation()
+            .AddHttpClientInstrumentation()
+            .AddEntityFrameworkCoreInstrumentation()
+            .AddConsoleExporter(); // For demo purposes, export to console
+    });
 
 var app = builder.Build();
 
@@ -69,14 +113,16 @@ if (app.Environment.IsDevelopment())
 {
     app.UseOpenApi();
     app.UseSwaggerUi();
-    
-    using var scope = app.Services.CreateScope();
-    var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    await context.Database.MigrateAsync();
 }
 
 app.UseHttpsRedirection();
 app.UseAuthorization();
+
+// Add global exception handler
+app.UseMiddleware<GlobalExceptionHandler>();
+
 app.MapControllers();
 
 app.Run();
+
+public partial class Program { }
