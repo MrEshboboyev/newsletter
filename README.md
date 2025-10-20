@@ -19,14 +19,29 @@ It also integrates **EF Core** and **PostgreSQL** for persistence, making it a r
 ### Advanced Workflow Examples
 - **Welcome Email Workflow**: Automatically sends a welcome email when a user subscribes
 - **Follow-Up Email Workflow**: Sends follow-up emails to engage with subscribers based on time delays
+- **Advanced Onboarding Workflow**: Multi-step onboarding process with profile completion, preferences selection, welcome package, and engagement scheduling
 - **Saga State Management**: Tracks complex multi-step processes with state persistence
+- **Compensation Patterns**: Automatic rollback mechanisms for failed operations
 - **Event Sourcing**: Full event history for audit and replay capabilities
+
+### Resilience and Reliability Features
+- **Retry Mechanisms**: Automatic retry with exponential backoff for transient failures
+- **Circuit Breaker**: Prevents cascading failures during service outages
+- **Fault Tolerance**: Graceful degradation and error handling
+- **Dead Letter Queues**: Captures and isolates failed messages for analysis
+
+### Monitoring and Observability
+- **Distributed Tracing**: End-to-end request tracking with OpenTelemetry
+- **Metrics Collection**: Real-time performance and business metrics
+- **Health Checks**: Comprehensive system health monitoring
+- **Structured Logging**: Detailed diagnostic information for troubleshooting
 
 ### Tools and Libraries
 - **EF Core**: Handles data persistence for Saga states and other entities
 - **PostgreSQL**: A powerful relational database for storage
 - **NSwag**: API documentation generation and client SDK generation
 - **Docker**: Containerized deployment for easy setup and scaling
+- **OpenTelemetry**: Industry-standard observability framework
 
 ## 📂 Repository Structure
 
@@ -39,6 +54,8 @@ It also integrates **EF Core** and **PostgreSQL** for persistence, making it a r
  ┣ 📂 Messages                 # Commands and Events definitions
  ┣ 📂 Migrations               # EF Core database migrations
  ┣ 📂 Sagas                   # Saga state machines and data models
+ ┣ 📂 Services                 # Business services and metrics collection
+ ┣ 📂 Middleware               # Custom middleware components
  ┣ 📜 Program.cs              # Application entry point and DI configuration
  ┣ 📜 appsettings.json        # Configuration settings
  ┗ 📜 Newsletter.Api.csproj   # Project dependencies
@@ -78,73 +95,94 @@ dotnet run --project src/Newsletter.Api
 
 ## 📖 Code Highlights
 
-### Advanced Saga State Machine
+### Advanced Saga State Machine with Error Handling and Compensation
 ```csharp
-public class NewsletterOnboardingSaga : MassTransitStateMachine<NewsletterOnboardingSagaData>
+public class AdvancedNewsletterOnboardingSaga : MassTransitStateMachine<AdvancedNewsletterOnboardingSagaData>
 {
-    public State Welcoming { get; set; }
-    public State FollowingUp { get; set; }
-    public State Onboarding { get; set; }
+    // States
+    public State AwaitingProfileCompletion { get; set; }
+    public State AwaitingPreferencesSelection { get; set; }
+    public State SendingWelcomePackage { get; set; }
+    public State SchedulingEngagementEmail { get; set; }
+    public State OnboardingCompleted { get; set; }
+    public State Compensating { get; set; }
+    public State Faulted { get; set; }
 
+    // Events
     public Event<SubscriberCreated> SubscriberCreated { get; set; }
-    public Event<WelcomeEmailSent> WelcomeEmailSent { get; set; }
-    public Event<FollowUpEmailSent> FollowUpEmailSent { get; set; }
+    public Event<ProfileCompleted> ProfileCompleted { get; set; }
+    public Event<PreferencesSelected> PreferencesSelected { get; set; }
+    public Event<WelcomePackageSent> WelcomePackageSent { get; set; }
+    public Event<EngagementEmailScheduled> EngagementEmailScheduled { get; set; }
+    
+    // Fault events
+    public Event<ProfileCompletionFaulted> ProfileCompletionFaulted { get; set; }
+    public Event<PreferencesSelectionFaulted> PreferencesSelectionFaulted { get; set; }
+    public Event<WelcomePackageSendFaulted> WelcomePackageSendFaulted { get; set; }
+    public Event<EngagementEmailScheduleFaulted> EngagementEmailScheduleFaulted { get; set; }
+    
+    // Compensation events
+    public Event<CompensateProfileCompletion> CompensateProfileCompletion { get; set; }
+    public Event<CompensatePreferencesSelection> CompensatePreferencesSelection { get; set; }
 
-    public NewsletterOnboardingSaga()
+    public AdvancedNewsletterOnboardingSaga(IMetricsService metricsService)
     {
         InstanceState(x => x.CurrentState);
 
+        // Correlation
         Event(() => SubscriberCreated, e => e.CorrelateById(context => context.Message.SubscriberId));
-        Event(() => WelcomeEmailSent, e => e.CorrelateById(context => context.Message.SubscriberId));
-        Event(() => FollowUpEmailSent, e => e.CorrelateById(context => context.Message.SubscriberId));
+        // ... other correlations
 
+        // State machine definition with compensation patterns
         Initially(
             When(SubscriberCreated)
-                .Then(context =>
-                {
+                .Then(context => {
                     context.Saga.SubscriberId = context.Message.SubscriberId;
-                    context.Message.SubscriberId = context.Message.SubscriberId;
+                    context.Saga.Email = context.Message.Email;
+                    context.Saga.Created = DateTime.UtcNow;
                 })
-                .TransitionTo(Welcoming)
-                .Publish(context => new SendWelcomeEmail(context.Message.SubscriberId, context.Message.Email)));
+                .TransitionTo(AwaitingProfileCompletion));
 
-        During(Welcoming,
-            When(WelcomeEmailSent)
-                .Then(context => context.Saga.WelcomeEmailSent = true)
-                .TransitionTo(FollowingUp)
-                .Publish(context => new SendFollowUpEmail(context.Message.SubscriberId, context.Message.Email)));
-
-        During(FollowingUp,
-            When(FollowUpEmailSent)
-                .Then(context =>
-                {
-                    context.Saga.FollowUpEmailSent = true;
-                    context.Saga.OnboardingCompleted = true;
+        During(AwaitingProfileCompletion,
+            When(ProfileCompleted)
+                .Then(context => {
+                    context.Saga.FirstName = context.Message.FirstName;
+                    context.Saga.LastName = context.Message.LastName;
+                    context.Saga.ProfileCompletedAt = DateTime.UtcNow;
                 })
-                .TransitionTo(Onboarding)
-                .Publish(context => new OnboardingCompleted
-                {
-                    SubscriberId = context.Message.SubscriberId,
-                    Email = context.Message.Email
+                .TransitionTo(AwaitingPreferencesSelection),
+            When(ProfileCompletionFaulted)
+                .Then(context => {
+                    context.Saga.ProfileCompletionFaulted = true;
+                    context.Saga.ProfileCompletionFaultReason = context.Message.Reason;
+                    metricsService.RecordSagaFault("AwaitingProfileCompletion", context.Message.Reason);
                 })
+                .TransitionTo(Faulted)
                 .Finalize());
+
+        // ... rest of the state machine definition
     }
 }
 ```
 
-### RabbitMQ Integration with MassTransit
+### RabbitMQ Integration with MassTransit and Retry Policies
 ```csharp
 builder.Services.AddMassTransit(busConfigurator =>
 {
     busConfigurator.SetKebabCaseEndpointNameFormatter();
-
     busConfigurator.AddConsumers(typeof(Program).Assembly);
 
     busConfigurator.AddSagaStateMachine<NewsletterOnboardingSaga, NewsletterOnboardingSagaData>()
         .EntityFrameworkRepository(r =>
         {
             r.ExistingDbContext<AppDbContext>();
-            
+            r.UsePostgres();
+        });
+        
+    busConfigurator.AddSagaStateMachine<AdvancedNewsletterOnboardingSaga, AdvancedNewsletterOnboardingSagaData>()
+        .EntityFrameworkRepository(r =>
+        {
+            r.ExistingDbContext<AppDbContext>();
             r.UsePostgres();
         });
 
@@ -156,11 +194,79 @@ builder.Services.AddMassTransit(busConfigurator =>
             hst.Password("guest");
         });
         
-        cfg.UseInMemoryOutbox(context);
+        // Configure retry policy for message consumption
+        cfg.UseMessageRetry(r => 
+        {
+            r.Immediate(3); // Retry 3 times immediately
+            r.Interval(3, TimeSpan.FromSeconds(5)); // Then retry 3 times with 5 second intervals
+        });
         
+        cfg.UseInMemoryOutbox(context);
         cfg.ConfigureEndpoints(context);
     });
 });
+```
+
+### Distributed Tracing with OpenTelemetry
+```csharp
+// Add distributed tracing
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(resource => resource.AddService("Newsletter.Api"))
+    .WithTracing(tracerProviderBuilder =>
+    {
+        tracerProviderBuilder
+            .AddSource("MassTransit")
+            .AddSource("Newsletter.Api")
+            .AddSource("Newsletter.Api.Handlers")
+            .AddSource("Newsletter.Api.Sagas")
+            .AddSource("Newsletter.Api.Sagas.Advanced")
+            .AddAspNetCoreInstrumentation()
+            .AddHttpClientInstrumentation()
+            .AddEntityFrameworkCoreInstrumentation()
+            .AddConsoleExporter(); // For demo purposes, export to console
+    });
+```
+
+### Metrics Collection Service
+```csharp
+public class MetricsService : IMetricsService
+{
+    private readonly Meter _meter;
+    private readonly Counter<long> _subscriptionCounter;
+    private readonly Counter<long> _emailSentCounter;
+    private readonly Counter<long> _emailFailedCounter;
+    private readonly Histogram<double> _emailSendDuration;
+    private readonly Counter<long> _sagaStateTransitions;
+    private readonly Counter<long> _sagaFaults;
+    private readonly Histogram<double> _sagaCompletionDuration;
+
+    public MetricsService()
+    {
+        _meter = new Meter("Newsletter.Api", "1.0.0");
+        
+        _subscriptionCounter = _meter.CreateCounter<long>(
+            "newsletter.subscriptions.total",
+            description: "Total number of newsletter subscriptions");
+            
+        _emailSentCounter = _meter.CreateCounter<long>(
+            "newsletter.emails.sent.total",
+            description: "Total number of emails sent");
+            
+        // ... other metrics
+            
+        _sagaCompletionDuration = _meter.CreateHistogram<double>(
+            "newsletter.sagas.completion.duration",
+            unit: "milliseconds",
+            description: "Duration of saga completion");
+    }
+
+    public void RecordSubscription()
+    {
+        _subscriptionCounter.Add(1);
+    }
+
+    // ... other metric recording methods
+}
 ```
 
 ### NSwag API Documentation Configuration
@@ -212,7 +318,7 @@ public class NewsletterController : ControllerBase
 
 ## 🌐 Use Cases
 
-### 1. Welcome Email Workflow
+### 1. Basic Welcome Email Workflow
 - Triggered when a user subscribes to the newsletter
 - Ensures the user receives a personalized welcome email
 - Tracks state transitions using Saga pattern
@@ -222,10 +328,21 @@ public class NewsletterController : ControllerBase
 - Implements time-based delays between messages
 - Tracks state transitions using Saga
 
-### 3. Complex Multi-Step Onboarding
-- Orchestrates the complete onboarding process
+### 3. Advanced Multi-Step Onboarding
+- Orchestrates a complete onboarding process with multiple steps:
+  - Profile completion
+  - Preferences selection
+  - Welcome package delivery
+  - Engagement email scheduling
+- Implements compensation patterns for rollback scenarios
 - Maintains state across service boundaries
 - Provides audit trail of all events
+
+### 4. System Monitoring and Observability
+- Real-time metrics collection and reporting
+- Distributed tracing for end-to-end request tracking
+- Health checks for system status monitoring
+- Performance monitoring and alerting
 
 ## 🎯 Advanced Event-Driven Architecture Benefits
 
@@ -238,16 +355,19 @@ public class NewsletterController : ControllerBase
 - Message persistence in RabbitMQ ensures no data loss
 - Retry mechanisms for failed message processing
 - Saga pattern maintains consistency across failures
+- Circuit breaker patterns prevent cascading failures
 
 ### Maintainability
 - Loose coupling between services
 - Clear separation of concerns
 - Easy to add new workflow steps
+- Compensation patterns for rollback scenarios
 
 ### Observability
 - Full event history for debugging and auditing
 - RabbitMQ management interface for monitoring
 - Structured logging for tracing
+- Real-time metrics and dashboards
 
 ## 🚀 API Endpoints
 
@@ -255,22 +375,68 @@ public class NewsletterController : ControllerBase
 |----------|--------|-------------|
 | `/api/newsletter/subscribe` | POST | Subscribe an email to the newsletter |
 | `/api/newsletter/health` | GET | Health check endpoint |
+| `/api/advancednewsletter/profile/complete` | POST | Complete subscriber profile |
+| `/api/advancednewsletter/preferences/select` | POST | Select subscriber preferences |
+| `/api/advancednewsletter/subscribe/advanced` | POST | Trigger advanced onboarding workflow |
+| `/api/monitoring/health` | GET | System health status |
+| `/api/monitoring/subscribers/stats` | GET | Subscriber statistics |
+| `/api/monitoring/sagas/stats` | GET | Saga workflow statistics |
+| `/api/monitoring/sagas/advanced/stats` | GET | Advanced saga workflow statistics |
+| `/api/monitoring/performance` | GET | System performance metrics |
+| `/api/dashboard` | GET | Comprehensive system dashboard |
+| `/api/metrics` | GET | Collected metrics data |
+| `/api/management/test/welcome-email` | POST | Send test welcome email |
+| `/api/management/test/followup-email` | POST | Send test follow-up email |
 | `/swagger` | GET | API documentation (Swagger UI) |
 
 ## 📊 System Architecture
 
 ```mermaid
 graph TB
-    A[Client] --> B[API Gateway]
-    B --> C[Newsletter API]
-    C --> D[RabbitMQ]
-    D --> E[Welcome Email Handler]
-    D --> F[Follow-up Email Handler]
-    E --> G[Email Service]
-    F --> G
-    C --> H[PostgreSQL]
-    H --> I[Saga State]
-    H --> J[Subscriber Data]
+    A[Client Application] --> B[API Gateway]
+    B --> C[Newsletter API Service]
+    C --> D[RabbitMQ Message Broker]
+    D --> E[Welcome Email Consumer]
+    D --> F[Follow-up Email Consumer]
+    D --> G[Profile Completion Consumer]
+    D --> H[Preferences Selection Consumer]
+    D --> I[Welcome Package Consumer]
+    D --> J[Engagement Email Consumer]
+    E --> K[Email Service]
+    F --> K
+    I --> K
+    C --> L[PostgreSQL Database]
+    L --> M[Saga State Storage]
+    L --> N[Advanced Saga State Storage]
+    L --> O[Subscriber Data]
+    
+    style A fill:#FFE4B5,stroke:#333
+    style B fill:#87CEEB,stroke:#333
+    style C fill:#98FB98,stroke:#333
+    style D fill:#FFA07A,stroke:#333
+    style E fill:#DDA0DD,stroke:#333
+    style F fill:#DDA0DD,stroke:#333
+    style G fill:#DDA0DD,stroke:#333
+    style H fill:#DDA0DD,stroke:#333
+    style I fill:#DDA0DD,stroke:#333
+    style J fill:#DDA0DD,stroke:#333
+    style K fill:#FFD700,stroke:#333
+    style L fill:#87CEFA,stroke:#333
+    style M fill:#87CEFA,stroke:#333
+    style N fill:#87CEFA,stroke:#333
+    style O fill:#87CEFA,stroke:#333
+```
+
+## 🧪 Testing
+
+The project includes comprehensive unit and integration tests using xUnit and Moq:
+
+```bash
+# Run all tests
+dotnet test
+
+# Run tests with code coverage
+dotnet test --collect:"XPlat Code Coverage"
 ```
 
 ## 🏗 About the Author
@@ -280,6 +446,6 @@ This project was developed by [MrEshboboyev](https://github.com/MrEshboboyev), a
 This project is licensed under the MIT License. Feel free to use and adapt the code for your own projects.
 
 ## 🔖 Tags
-C#, .NET, MassTransit, Saga, RabbitMQ, EF Core, PostgreSQL, Event-Driven Architecture, Messaging, Newsletter System, Clean Code, NSwag, Swagger, Docker
+C#, .NET, MassTransit, Saga, RabbitMQ, EF Core, PostgreSQL, Event-Driven Architecture, Messaging, Newsletter System, Clean Code, NSwag, Swagger, Docker, OpenTelemetry, Distributed Tracing, Observability
 
 ---
